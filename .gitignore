@@ -1,0 +1,30 @@
+# Virtual Environments
+
+cctv-env/
+venv/
+env/
+
+# Security / Credentials
+
+.env
+
+# Python Cache
+
+pycache/
+*.py[cod]
+*$py.class
+
+# AI Model Weights
+
+*.pt
+yolo26n.pt
+yoloe-26s-seg.pt
+
+# Logs and terminal outputs
+
+main.txt
+*.log
+
+# Images saved by the system
+
+latest_alert.jpg
