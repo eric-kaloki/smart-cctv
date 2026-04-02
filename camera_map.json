@@ -2,25 +2,30 @@
     "cameras": {
         "cam_01_gate": {
             "name": "Main Gate",
+            "is_restricted": false,
             "adjacent_to": ["cam_02_corridor"]
         },
         "cam_02_corridor": {
             "name": "East Corridor",
+            "is_restricted": false,
             "adjacent_to": ["cam_01_gate", "cam_03_backdoor"]
         },
         "cam_03_backdoor": {
             "name": "Back Door Exit",
+            "is_restricted": true,
             "adjacent_to": ["cam_02_corridor"]
         }
     },
     "transit_model": {
         "cam_01_gate_to_cam_02_corridor": {
             "expected_seconds": 20,
-            "tolerance_seconds": 15
+            "tolerance_seconds": 15,
+            "_note": "Fallback only — system learns real values automatically"
         },
         "cam_02_corridor_to_cam_03_backdoor": {
             "expected_seconds": 15,
-            "tolerance_seconds": 10
+            "tolerance_seconds": 10,
+            "_note": "Fallback only — system learns real values automatically"
         }
     }
 }
