@@ -9,6 +9,7 @@ class DetectionEvent:
     timestamp: float
     bbox: list              # [x1, y1, x2, y2]
     appearance_vector: dict # The output from feature_extractor.py
+    is_restricted_zone: bool = False # <--- ADDED THIS
     
 @dataclass
 class Trail:

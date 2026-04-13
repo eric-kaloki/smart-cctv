@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guardly - Live Operations</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; overflow: hidden; }
+        
+        #map-container {
+            box-shadow: inset 0 0 50px rgba(0,0,0,0.5);
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+        }
+
+        @keyframes pulse-red {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        .incident-card { animation: pulse-red 2s infinite; }
+        
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+
+        /* Mode Styles */
+        .tool-active { background-color: #3b82f6; color: white; border-color: #60a5fa; }
+        canvas.mode-draw { cursor: crosshair; }
+        canvas.mode-place { cursor: crosshair; }
+        canvas.mode-select { cursor: default; }
+        canvas.mode-live { cursor: pointer; } /* Indicates cameras are clickable in live mode */
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col font-sans">
+
+    <!-- Header -->
+    <header class="h-16 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-6 shrink-0">
+        <div class="flex items-center gap-3">
+            <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+                <i data-lucide="shield" class="w-5 h-5 text-white"></i>
+            </div>
+            <h1 class="text-xl font-bold tracking-wide">GUARDLY <span class="text-slate-500 font-normal text-sm ml-2">Live Operations</span></h1>
+        </div>
+        <div class="flex items-center gap-4 text-sm font-medium">
+            <button id="btn-edit-mode" onclick="toggleEditMode()" class="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded border border-slate-700 text-slate-300 transition">
+                <i data-lucide="settings" class="w-4 h-4"></i> Setup Map
+            </button>
+            <div class="w-px h-6 bg-slate-700 mx-2"></div>
+            <div class="flex items-center gap-2 text-green-400">
+                <div class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></div>
+                System Active
+            </div>
+            <div class="text-slate-400" id="clock">00:00:00</div>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="flex-1 flex overflow-hidden">
+        
+        <!-- Canvas Area (2.5D Map) -->
+        <div class="flex-1 relative p-4" id="map-container">
+            
+            <!-- Setup Toolbar -->
+            <div id="setup-toolbar" class="hidden absolute top-6 left-1/2 -translate-x-1/2 z-20 bg-slate-800/90 backdrop-blur border border-slate-700 p-2 rounded-xl shadow-2xl flex items-center gap-2">
+                <button id="tool-zone" onclick="setTool('zone')" class="px-3 py-1.5 hover:bg-slate-700 rounded border border-transparent text-sm text-slate-300 flex items-center gap-2">
+                    <i data-lucide="square" class="w-4 h-4"></i> Draw Zone
+                </button>
+                <button id="tool-cam" onclick="setTool('camera')" class="px-3 py-1.5 hover:bg-slate-700 rounded border border-transparent text-sm text-slate-300 flex items-center gap-2">
+                    <i data-lucide="video" class="w-4 h-4"></i> Place Camera
+                </button>
+                <div class="w-px h-6 bg-slate-600"></div>
+                <button onclick="clearMap()" class="px-3 py-1.5 hover:bg-red-900/50 text-red-400 rounded text-sm flex items-center gap-2">
+                    <i data-lucide="trash-2" class="w-4 h-4"></i> Clear Map
+                </button>
+                <button onclick="saveMap()" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded font-bold text-sm ml-2 flex items-center gap-2">
+                    <i data-lucide="save" class="w-4 h-4"></i> Save Layout
+                </button>
+            </div>
+
+            <!-- Legend -->
+            <div id="legend-panel" class="absolute top-6 left-6 z-10 bg-slate-800/80 backdrop-blur border border-slate-700 p-3 rounded-lg shadow-lg transition-opacity">
+                <h3 class="text-xs text-slate-400 font-semibold uppercase mb-2">Legend</h3>
+                <div class="flex flex-col gap-2 text-sm">
+                    <div class="flex items-center gap-2"><div class="w-3 h-3 rounded-full bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,0.8)]"></div> Active Trail</div>
+                    <div class="flex items-center gap-2"><div class="w-3 h-3 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse"></div> Incident Alert</div>
+                    <div class="flex items-center gap-2"><div class="w-3 h-3 bg-red-900/30 border border-red-500/50 rounded-sm"></div> Restricted Zone</div>
+                </div>
+            </div>
+            
+            <canvas id="floorPlan" class="w-full h-full rounded-xl border border-slate-800 bg-slate-900 shadow-2xl mode-live" tabindex="0"></canvas>
+        </div>
+
+        <!-- Right Sidebar -->
+        <aside id="sidebar" class="w-96 bg-slate-900 border-l border-slate-800 flex flex-col shrink-0 transition-opacity">
+            
+            <!-- LIVE MODE CONTENT -->
+            <div id="live-sidebar" class="flex-1 flex flex-col h-full">
+                <!-- Incidents Panel -->
+                <div class="flex-1 flex flex-col">
+                    <div class="p-4 border-b border-slate-800 flex justify-between items-center">
+                        <h2 class="text-sm font-bold uppercase text-slate-300 flex items-center gap-2">
+                            <i data-lucide="bell" class="w-4 h-4"></i> Active Incidents
+                        </h2>
+                        <span id="incident-count" class="bg-slate-800 text-slate-300 text-xs px-2 py-1 rounded-full">0</span>
+                    </div>
+                    
+                    <div id="incidents-list" class="flex-1 overflow-y-auto p-4 space-y-3">
+                        <div class="text-center text-slate-500 text-sm mt-10" id="no-incidents-msg">
+                            <i data-lucide="check-circle" class="w-8 h-8 mx-auto mb-2 opacity-50"></i>
+                            No active incidents
+                        </div>
+                    </div>
+                </div>
+
+                <!-- LIVE Focus Camera Feed -->
+                <div class="h-72 border-t border-slate-800 bg-black p-2 flex flex-col">
+                    <div class="text-xs text-slate-400 uppercase font-bold mb-2 tracking-wider flex justify-between">
+                        <span>Live Feed</span>
+                        <span class="text-blue-400 text-[10px]" id="active-cam-name">Click map to select camera</span>
+                    </div>
+                    <div id="camera-feeds" class="flex-1 rounded overflow-hidden relative border border-slate-700 bg-slate-900 flex items-center justify-center">
+                        <!-- Feed injected here -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- EDIT MODE CONTENT (Properties Panel) -->
+            <div id="edit-sidebar" class="hidden flex-1 flex flex-col p-4">
+                <h2 class="text-sm font-bold uppercase text-slate-300 mb-4 flex items-center gap-2">
+                    <i data-lucide="sliders" class="w-4 h-4"></i> Properties
+                </h2>
+                
+                <div id="no-selection-msg" class="text-slate-500 text-sm text-center mt-10">
+                    <i data-lucide="mouse-pointer-click" class="w-8 h-8 mx-auto mb-2 opacity-50"></i>
+                    Select an item on the map to edit its properties.
+                </div>
+
+                <div id="properties-form" class="hidden space-y-5">
+                    <div>
+                        <label class="block text-xs text-slate-400 mb-1 uppercase tracking-wider font-semibold">Name</label>
+                        <input type="text" id="prop-name" class="w-full bg-slate-800 border border-slate-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none rounded px-3 py-2 text-white text-sm transition" oninput="handlePropChange('name', this.value)">
+                    </div>
+                    
+                    <div id="prop-direction-container" class="hidden">
+                        <label class="block text-xs text-slate-400 mb-1 uppercase tracking-wider font-semibold">Facing Direction (<span id="prop-dir-val"></span>°)</label>
+                        <input type="range" id="prop-direction" min="0" max="360" class="w-full accent-blue-500" oninput="handlePropChange('direction', this.value)">
+                    </div>
+
+                    <div id="prop-adjacent-container" class="hidden pt-4 border-t border-slate-800">
+                        <label class="block text-xs text-slate-400 mb-2 uppercase tracking-wider font-semibold">Connect To (Adjacent)</label>
+                        <div id="prop-adjacent-list" class="space-y-2 text-sm text-slate-300 bg-slate-900 p-3 rounded border border-slate-700 max-h-40 overflow-y-auto">
+                        </div>
+                        <p class="text-[10px] text-slate-500 mt-2">Select cameras that a person can directly walk to from here.</p>
+                    </div>
+
+                    <div class="pt-4 border-t border-slate-800">
+                        <button onclick="deleteSelected()" class="w-full bg-slate-800 hover:bg-red-900/50 border border-slate-700 hover:border-red-700/50 text-slate-300 hover:text-red-400 text-sm py-2 rounded flex items-center justify-center gap-2 transition group">
+                            <i data-lucide="trash-2" class="w-4 h-4 group-hover:animate-bounce"></i> Delete Selected
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+        </aside>
+    </main>
+
+    <script>
+        lucide.createIcons();
+        setInterval(() => document.getElementById('clock').innerText = new Date().toLocaleTimeString(), 1000);
+
+        const canvas = document.getElementById('floorPlan');
+        const ctx = canvas.getContext('2d');
+        
+        let trails = {}; 
+        let incidents = [];
+        
+        // Setup Mode State
+        let isEditMode = false;
+        let currentTool = 'select'; 
+        
+        // Interaction State
+        let selectedItem = null; 
+        let activeLiveCamera = null; // The camera currently being viewed in the sidebar
+        let drawingZone = null;
+        let draggingCam = null;
+        let draggingRoom = null;
+        let roomDragOffset = { x: 0, y: 0 };
+
+        let mapData = { rooms: [], cameras: [] }; 
+
+        function resizeCanvas() {
+            const parent = canvas.parentElement;
+            canvas.width = parent.clientWidth - 32;
+            canvas.height = parent.clientHeight - 32;
+        }
+        window.addEventListener('resize', resizeCanvas);
+
+        // --- ANIMATION ENGINE ---
+        // We use requestAnimationFrame to make the radar pulses and trails move smoothly
+        function renderLoop() {
+            drawMap();
+            requestAnimationFrame(renderLoop);
+        }
+
+        // --- FETCH DYNAMIC DATA ---
+        async function loadMapData() {
+            try {
+                const response = await fetch('/api/cameras'); 
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    if (data.cameras && Object.keys(data.cameras).length > 0) {
+                        mapData.cameras = [];
+                        mapData.rooms = data.rooms || [];
+                        
+                        for (const [id, cam] of Object.entries(data.cameras)) {
+                            mapData.cameras.push({
+                                id: id,
+                                name: cam.name,
+                                x: cam.map_coords?.x || 100,
+                                y: cam.map_coords?.y || 100,
+                                adjacent_to: cam.adjacent_to || [],
+                                fov: cam.fov || { angle: 60, direction: 45, distance: 100 }
+                            });
+                        }
+                        
+                        // Default focus to the first camera
+                        if (mapData.cameras.length > 0) {
+                            activeLiveCamera = mapData.cameras[0].id;
+                        }
+                    }
+                }
+            } catch (err) {
+                console.log("Offline mode: No backend detected.");
+            }
+            setupCameraFeeds(); 
+        }
+
+        // --- EDIT MODE LOGIC ---
+        function toggleEditMode() {
+            isEditMode = !isEditMode;
+            const toolbar = document.getElementById('setup-toolbar');
+            const legend = document.getElementById('legend-panel');
+            const liveSidebar = document.getElementById('live-sidebar');
+            const editSidebar = document.getElementById('edit-sidebar');
+            const btn = document.getElementById('btn-edit-mode');
+
+            if (isEditMode) {
+                toolbar.classList.remove('hidden');
+                legend.classList.add('opacity-10');
+                
+                liveSidebar.classList.add('hidden');
+                editSidebar.classList.remove('hidden');
+
+                btn.classList.add('bg-blue-600', 'text-white');
+                btn.classList.remove('bg-slate-800', 'text-slate-300');
+                setTool('select');
+            } else {
+                toolbar.classList.add('hidden');
+                legend.classList.remove('opacity-10');
+                
+                liveSidebar.classList.remove('hidden');
+                editSidebar.classList.add('hidden');
+
+                btn.classList.remove('bg-blue-600', 'text-white');
+                btn.classList.add('bg-slate-800', 'text-slate-300');
+                
+                selectedItem = null; 
+                setTool('select');
+            }
+        }
+
+        function setTool(tool) {
+            currentTool = tool;
+            document.getElementById('tool-zone').classList.remove('tool-active');
+            document.getElementById('tool-cam').classList.remove('tool-active');
+            
+            // Set cursor style
+            if (!isEditMode) {
+                canvas.className = 'w-full h-full rounded-xl border border-slate-800 shadow-2xl bg-slate-900 outline-none mode-live';
+            } else {
+                canvas.className = 'w-full h-full rounded-xl border border-slate-800 shadow-2xl bg-slate-900 outline-none';
+                if (tool === 'zone') {
+                    document.getElementById('tool-zone').classList.add('tool-active');
+                    canvas.classList.add('mode-draw');
+                    selectedItem = null; 
+                } else if (tool === 'camera') {
+                    document.getElementById('tool-cam').classList.add('tool-active');
+                    canvas.classList.add('mode-place');
+                    selectedItem = null;
+                } else {
+                    canvas.classList.add('mode-select');
+                }
+            }
+            updatePropertiesPanel();
+        }
+
+        function clearMap() {
+            if(confirm("Clear the entire map to start over?")) {
+                mapData = { rooms: [], cameras: [] };
+                selectedItem = null;
+                updatePropertiesPanel();
+            }
+        }
+
+        async function saveMap() {
+            const payload = { cameras: {}, rooms: mapData.rooms };
+            
+            mapData.cameras.forEach(c => {
+                payload.cameras[c.id] = {
+                    name: c.name,
+                    is_restricted: false, 
+                    adjacent_to: c.adjacent_to || [], 
+                    map_coords: { x: Math.round(c.x), y: Math.round(c.y) },
+                    fov: c.fov 
+                };
+            });
+
+            try {
+                await fetch('/api/cameras/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                alert("Map layout saved! The AI backend will now dynamically read this layout.");
+            } catch(e) {
+                alert("Saved to UI only. Ensure local_server.py is running to persist data.");
+            }
+            
+            setupCameraFeeds();
+            toggleEditMode();
+        }
+
+        // --- PROPERTIES PANEL ENGINE ---
+        function updatePropertiesPanel() {
+            const noSelMsg = document.getElementById('no-selection-msg');
+            const form = document.getElementById('properties-form');
+            const nameInput = document.getElementById('prop-name');
+            const dirContainer = document.getElementById('prop-direction-container');
+            const dirInput = document.getElementById('prop-direction');
+            const dirVal = document.getElementById('prop-dir-val');
+            
+            const adjContainer = document.getElementById('prop-adjacent-container');
+            const adjList = document.getElementById('prop-adjacent-list');
+
+            if (!selectedItem) {
+                noSelMsg.classList.remove('hidden');
+                form.classList.add('hidden');
+                return;
+            }
+
+            noSelMsg.classList.add('hidden');
+            form.classList.remove('hidden');
+            nameInput.value = selectedItem.ref.name;
+
+            if (selectedItem.type === 'camera') {
+                dirContainer.classList.remove('hidden');
+                dirInput.value = selectedItem.ref.fov.direction;
+                dirVal.innerText = selectedItem.ref.fov.direction;
+                
+                adjContainer.classList.remove('hidden');
+                adjList.innerHTML = '';
+                let otherCams = mapData.cameras.filter(c => c.id !== selectedItem.ref.id);
+                
+                if (otherCams.length === 0) {
+                    adjList.innerHTML = '<div class="text-xs text-slate-500 italic py-1">Add another camera to connect them.</div>';
+                } else {
+                    otherCams.forEach(c => {
+                        const isChecked = (selectedItem.ref.adjacent_to || []).includes(c.id);
+                        adjList.innerHTML += `
+                            <label class="flex items-center gap-3 cursor-pointer hover:text-white p-1">
+                                <input type="checkbox" class="w-4 h-4 accent-blue-500 rounded bg-slate-800 border-slate-600" 
+                                    value="${c.id}" ${isChecked ? 'checked' : ''} 
+                                    onchange="toggleAdjacency('${c.id}', this.checked)">
+                                <span>${c.name}</span>
+                            </label>
+                        `;
+                    });
+                }
+            } else {
+                dirContainer.classList.add('hidden');
+                adjContainer.classList.add('hidden');
+            }
+        }
+
+        function handlePropChange(prop, value) {
+            if (!selectedItem) return;
+            if (prop === 'name') {
+                selectedItem.ref.name = value;
+            } else if (prop === 'direction' && selectedItem.type === 'camera') {
+                selectedItem.ref.fov.direction = parseInt(value);
+                document.getElementById('prop-dir-val').innerText = value;
+            }
+        }
+
+        function toggleAdjacency(targetCamId, isAdding) {
+            if (!selectedItem || selectedItem.type !== 'camera') return;
+            
+            if (!selectedItem.ref.adjacent_to) selectedItem.ref.adjacent_to = [];
+            const targetCam = mapData.cameras.find(c => c.id === targetCamId);
+            if (targetCam && !targetCam.adjacent_to) targetCam.adjacent_to = [];
+
+            if (isAdding) {
+                if (!selectedItem.ref.adjacent_to.includes(targetCamId)) selectedItem.ref.adjacent_to.push(targetCamId);
+                if (targetCam && !targetCam.adjacent_to.includes(selectedItem.ref.id)) targetCam.adjacent_to.push(selectedItem.ref.id);
+            } else {
+                selectedItem.ref.adjacent_to = selectedItem.ref.adjacent_to.filter(id => id !== targetCamId);
+                if (targetCam) targetCam.adjacent_to = targetCam.adjacent_to.filter(id => id !== selectedItem.ref.id);
+            }
+        }
+
+        function deleteSelected() {
+            if (!selectedItem) return;
+            if (selectedItem.type === 'camera') {
+                const idToDelete = selectedItem.ref.id;
+                mapData.cameras = mapData.cameras.filter(c => c.id !== idToDelete);
+                mapData.cameras.forEach(c => {
+                    if(c.adjacent_to) c.adjacent_to = c.adjacent_to.filter(adjId => adjId !== idToDelete);
+                });
+            } else if (selectedItem.type === 'room') {
+                mapData.rooms = mapData.rooms.filter(r => r.id !== selectedItem.ref.id);
+            }
+            selectedItem = null;
+            updatePropertiesPanel();
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (!isEditMode) return;
+            if (e.target.tagName.toLowerCase() === 'input') return; 
+            if ((e.key === 'Delete' || e.key === 'Backspace') && selectedItem) deleteSelected();
+        });
+
+        // --- MOUSE INTERACTIONS ---
+        function getMousePos(evt) {
+            const rect = canvas.getBoundingClientRect();
+            return { x: evt.clientX - rect.left, y: evt.clientY - rect.top };
+        }
+
+        function getHitItem(pos) {
+            for (let i = mapData.cameras.length - 1; i >= 0; i--) {
+                let c = mapData.cameras[i];
+                if (Math.hypot(c.x - pos.x, c.y - pos.y) < 15) return { type: 'camera', ref: c };
+            }
+            for (let i = mapData.rooms.length - 1; i >= 0; i--) {
+                let r = mapData.rooms[i];
+                if (pos.x >= r.x && pos.x <= r.x + r.w && pos.y >= r.y && pos.y <= r.y + r.h) {
+                    return { type: 'room', ref: r };
+                }
+            }
+            return null;
+        }
+
+        canvas.addEventListener('mousedown', (e) => {
+            const pos = getMousePos(e);
+            
+            // IF IN LIVE MODE: Handle selecting active camera for the sidebar feed
+            if (!isEditMode) {
+                const hit = getHitItem(pos);
+                if (hit && hit.type === 'camera') {
+                    activeLiveCamera = hit.ref.id;
+                    setupCameraFeeds();
+                }
+                return; // Stop here, no dragging in live mode
+            }
+
+            // IF IN EDIT MODE:
+            if (currentTool === 'zone') {
+                drawingZone = { x: pos.x, y: pos.y, w: 0, h: 0 };
+            } 
+            else if (currentTool === 'camera') {
+                const newCam = {
+                    id: `cam_${Math.floor(Math.random()*10000)}`, 
+                    name: `Camera ${mapData.cameras.length + 1}`, 
+                    x: pos.x, 
+                    y: pos.y,
+                    adjacent_to: [],
+                    fov: { angle: 60, direction: 45, distance: 100 }
+                };
+                mapData.cameras.push(newCam);
+                selectedItem = { type: 'camera', ref: newCam };
+                updatePropertiesPanel();
+                setTool('select'); 
+            } 
+            else if (currentTool === 'select') {
+                selectedItem = getHitItem(pos);
+                updatePropertiesPanel();
+                
+                if (selectedItem) {
+                    if (selectedItem.type === 'camera') {
+                        draggingCam = selectedItem.ref;
+                    } else if (selectedItem.type === 'room') {
+                        draggingRoom = selectedItem.ref;
+                        roomDragOffset.x = pos.x - draggingRoom.x;
+                        roomDragOffset.y = pos.y - draggingRoom.y;
+                    }
+                }
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (!isEditMode) return;
+            const pos = getMousePos(e);
+
+            if (drawingZone) {
+                drawingZone.w = pos.x - drawingZone.x;
+                drawingZone.h = pos.y - drawingZone.y;
+            } else if (draggingCam) {
+                draggingCam.x = pos.x;
+                draggingCam.y = pos.y;
+            } else if (draggingRoom) {
+                draggingRoom.x = pos.x - roomDragOffset.x;
+                draggingRoom.y = pos.y - roomDragOffset.y;
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            if (!isEditMode) return;
+            if (drawingZone) {
+                const rx = drawingZone.w < 0 ? drawingZone.x + drawingZone.w : drawingZone.x;
+                const ry = drawingZone.h < 0 ? drawingZone.y + drawingZone.h : drawingZone.y;
+                const rw = Math.abs(drawingZone.w);
+                const rh = Math.abs(drawingZone.h);
+                
+                if (rw > 20 && rh > 20) {
+                    const newRoom = {
+                        id: `zone_${Date.now()}`,
+                        name: "Restricted Zone",
+                        x: rx, y: ry, w: rw, h: rh,
+                        restricted: true
+                    };
+                    mapData.rooms.push(newRoom);
+                    selectedItem = { type: 'room', ref: newRoom };
+                    updatePropertiesPanel();
+                }
+                drawingZone = null;
+                setTool('select');
+            }
+            draggingCam = null;
+            draggingRoom = null;
+        });
+
+        // --- DRAWING LOGIC ---
+        function drawMap() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const time = Date.now();
+
+            // 1. Draw Zones
+            mapData.rooms.forEach(room => {
+                const isSelected = selectedItem && selectedItem.ref === room;
+                ctx.fillStyle = room.restricted ? 'rgba(239, 68, 68, 0.15)' : 'rgba(148, 163, 184, 0.1)';
+                
+                if (isSelected && isEditMode) {
+                    ctx.strokeStyle = '#3b82f6';
+                    ctx.lineWidth = 3;
+                } else {
+                    ctx.strokeStyle = room.restricted ? 'rgba(239, 68, 68, 0.6)' : '#475569';
+                    ctx.lineWidth = isEditMode ? 2 : 1;
+                }
+                
+                ctx.fillRect(room.x, room.y, room.w, room.h);
+                ctx.strokeRect(room.x, room.y, room.w, room.h);
+
+                ctx.fillStyle = isSelected && isEditMode ? '#fff' : (room.restricted ? '#fca5a5' : '#94a3b8');
+                ctx.font = isSelected && isEditMode ? 'bold 12px sans-serif' : '12px sans-serif';
+                ctx.fillText(room.name, room.x + 5, room.y + 16);
+            });
+
+            if (drawingZone) {
+                ctx.fillStyle = 'rgba(239, 68, 68, 0.3)';
+                ctx.strokeStyle = '#ef4444';
+                ctx.setLineDash([5, 5]);
+                ctx.fillRect(drawingZone.x, drawingZone.y, drawingZone.w, drawingZone.h);
+                ctx.strokeRect(drawingZone.x, drawingZone.y, drawingZone.w, drawingZone.h);
+                ctx.setLineDash([]);
+            }
+
+            // 2. Draw Cameras & Connection Lines
+            if (mapData.cameras) {
+                if (isEditMode && selectedItem && selectedItem.type === 'camera') {
+                    const selCam = selectedItem.ref;
+                    if (selCam.adjacent_to) {
+                        selCam.adjacent_to.forEach(adjId => {
+                            const target = mapData.cameras.find(c => c.id === adjId);
+                            if (target) {
+                                ctx.beginPath();
+                                ctx.moveTo(selCam.x, selCam.y);
+                                ctx.lineTo(target.x, target.y);
+                                ctx.strokeStyle = 'rgba(59, 130, 246, 0.5)';
+                                ctx.lineWidth = 2;
+                                ctx.setLineDash([5, 5]);
+                                ctx.stroke();
+                                ctx.setLineDash([]);
+                            }
+                        });
+                    }
+                }
+
+                mapData.cameras.forEach(cam => {
+                    const isSelected = selectedItem && selectedItem.ref === cam;
+                    const isActiveLive = !isEditMode && activeLiveCamera === cam.id; // The camera currently viewed
+
+                    if(cam.fov) {
+                        ctx.beginPath();
+                        ctx.moveTo(cam.x, cam.y);
+                        const startAngle = (cam.fov.direction - cam.fov.angle / 2) * Math.PI / 180;
+                        const endAngle = (cam.fov.direction + cam.fov.angle / 2) * Math.PI / 180;
+                        ctx.arc(cam.x, cam.y, cam.fov.distance, startAngle, endAngle);
+                        ctx.fillStyle = (isSelected && isEditMode) || isActiveLive ? 'rgba(59, 130, 246, 0.2)' : 'rgba(255, 255, 255, 0.05)';
+                        ctx.fill();
+                    }
+                    
+                    ctx.beginPath();
+                    ctx.arc(cam.x, cam.y, isEditMode || isActiveLive ? 6 : 4, 0, Math.PI * 2);
+                    
+                    if ((isSelected && isEditMode) || isActiveLive) {
+                        ctx.fillStyle = '#60a5fa';
+                        ctx.shadowColor = '#60a5fa';
+                        ctx.shadowBlur = 10;
+                    } else {
+                        ctx.fillStyle = isEditMode ? '#3b82f6' : '#94a3b8';
+                        ctx.shadowBlur = 0;
+                    }
+                    
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                    
+                    // Name label above camera
+                    ctx.strokeStyle = '#fff';
+                    if (isEditMode) ctx.stroke();
+                    ctx.fillStyle = isSelected || isActiveLive ? '#60a5fa' : '#fff';
+                    ctx.font = isSelected || isActiveLive ? 'bold 12px sans-serif' : '10px sans-serif';
+                    ctx.fillText(cam.name, cam.x + 10, cam.y + 4);
+                });
+            }
+
+            // 3. Draw Live Trails and Radar Pulse Animation (Only if NOT in edit mode)
+            if (!isEditMode) {
+                Object.values(trails).forEach(trail => {
+                    const isIncident = incidents.some(i => i.trail_id === trail.id);
+                    const colorStr = isIncident ? '239, 68, 68' : '96, 165, 250'; // Red vs Blue
+                    
+                    // Draw historical path
+                    if (trail.history && trail.history.length > 1) {
+                        ctx.beginPath();
+                        ctx.moveTo(trail.history[0].x, trail.history[0].y);
+                        trail.history.forEach(pt => ctx.lineTo(pt.x, pt.y));
+                        ctx.strokeStyle = `rgba(${colorStr}, 0.4)`;
+                        ctx.lineWidth = 2;
+                        ctx.setLineDash([5, 5]);
+                        ctx.stroke();
+                        ctx.setLineDash([]);
+                    }
+
+                    // --- ANIMATED RADAR PULSE ---
+                    // Creates an expanding ring that pulses every 1 second based on Date.now()
+                    const pulseScale = (time % 1000) / 1000; 
+                    const pulseRadius = 6 + (pulseScale * 20); // expands from 6px to 26px
+                    const pulseAlpha = 1 - pulseScale; // fades out as it expands
+                    
+                    ctx.beginPath();
+                    ctx.arc(trail.x, trail.y, pulseRadius, 0, Math.PI * 2);
+                    ctx.strokeStyle = `rgba(${colorStr}, ${pulseAlpha})`;
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+
+                    // Inner Dot
+                    ctx.beginPath();
+                    ctx.arc(trail.x, trail.y, 6, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgb(${colorStr})`;
+                    ctx.shadowColor = `rgb(${colorStr})`;
+                    ctx.shadowBlur = 15;
+                    ctx.fill();
+                    ctx.shadowBlur = 0; 
+                    
+                    // Alert / Tracking Label next to the dot
+                    ctx.fillStyle = '#fff';
+                    ctx.font = 'bold 10px sans-serif';
+                    ctx.fillText(isIncident ? '🚨 SUSPECT' : '👁️ TRACKING', trail.x + 12, trail.y + 4);
+                });
+            }
+        }
+
+        // --- DYNAMIC CAMERA FEEDS ---
+        function setupCameraFeeds() {
+            const container = document.getElementById('camera-feeds');
+            const label = document.getElementById('active-cam-name');
+            container.innerHTML = ''; 
+
+            if (!mapData.cameras || mapData.cameras.length === 0) {
+                container.innerHTML = '<div class="text-xs text-slate-500">No cameras configured.</div>';
+                return;
+            }
+
+            // Find the selected camera, or default to the first one
+            let camToView = mapData.cameras.find(c => c.id === activeLiveCamera);
+            if (!camToView) {
+                camToView = mapData.cameras[0];
+                activeLiveCamera = camToView.id;
+            }
+            
+            label.innerText = camToView.name;
+
+            // Render a SINGLE large feed to fit the sidebar perfectly
+            const el = document.createElement('div');
+            el.className = 'w-full h-full relative overflow-hidden bg-black flex items-center justify-center';
+            
+            el.innerHTML = `
+                <div class="absolute top-2 left-2 flex items-center gap-2 z-10 bg-black/60 px-2 py-1 rounded">
+                    <div class="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                    <span class="text-[10px] text-white font-bold uppercase tracking-wider">LIVE</span>
+                </div>
+                <img src="/api/stream/${camToView.id}" alt="${camToView.id} feed" class="w-full h-full object-contain opacity-90" 
+                     onerror="this.onerror=null; this.src=''; this.parentElement.innerHTML+='<div class=\\'absolute inset-0 flex items-center justify-center text-xs text-slate-500 bg-slate-900\\'>Awaiting Stream...</div>'; this.style.display='none';">
+            `;
+            container.appendChild(el);
+        }
+
+        // --- UI LOGIC ---
+        function renderIncidents() {
+            const list = document.getElementById('incidents-list');
+            const emptyMsg = document.getElementById('no-incidents-msg');
+            const count = document.getElementById('incident-count');
+            
+            count.innerText = incidents.length;
+            
+            if (incidents.length === 0) {
+                list.innerHTML = '';
+                list.appendChild(emptyMsg);
+                emptyMsg.style.display = 'block';
+                return;
+            }
+            
+            emptyMsg.style.display = 'none';
+            list.innerHTML = '';
+            
+            incidents.forEach(inc => {
+                const el = document.createElement('div');
+                el.className = 'incident-card bg-slate-800 border border-red-500/50 rounded-lg p-3 relative cursor-pointer hover:bg-slate-700 transition';
+                // If they click the incident card, auto-switch the live feed to the camera where it happened!
+                el.onclick = () => {
+                    // Extract the camera ID from the trail if possible, or fall back to finding it by coords
+                    const targetCam = mapData.cameras.find(c => Math.hypot(c.x - inc.x, c.y - inc.y) < 50);
+                    if (targetCam) {
+                        activeLiveCamera = targetCam.id;
+                        setupCameraFeeds();
+                    }
+                };
+
+                el.innerHTML = `
+                    <div class="flex justify-between items-start mb-2">
+                        <span class="bg-red-500/20 text-red-400 text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">Score: ${Math.round(inc.score)}</span>
+                        <span class="text-[10px] text-slate-500">${new Date(inc.timestamp).toLocaleTimeString()}</span>
+                    </div>
+                    <p class="text-sm text-slate-200 mb-3">${inc.message || 'Suspicious routing detected.'}</p>
+                    <button onclick="event.stopPropagation(); acknowledgeIncident('${inc.id}')" class="w-full bg-slate-700 hover:bg-slate-600 text-white text-xs py-1.5 rounded transition">
+                        Acknowledge
+                    </button>
+                `;
+                list.appendChild(el);
+            });
+        }
+
+        function acknowledgeIncident(id) {
+            incidents = incidents.filter(i => i.id !== id);
+            renderIncidents();
+        }
+
+        // Initialize
+        window.onload = () => {
+            resizeCanvas();
+            loadMapData(); 
+            
+            // Start the 30FPS rendering loop for smooth pulse animations
+            requestAnimationFrame(renderLoop);
+
+            // Connect WebSocket
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const ws = new WebSocket(`${protocol}//${window.location.host}/ws/live`);
+            
+            ws.onmessage = (event) => {
+                const msg = JSON.parse(event.data);
+                if (msg.type === 'trail_update') {
+                    trails[msg.data.id] = msg.data;
+                } else if (msg.type === 'new_incident') {
+                    if (!incidents.find(i => i.id === msg.data.id)) {
+                        incidents.push(msg.data);
+                        renderIncidents();
+                    }
+                } else if (msg.type === 'incident_cleared') {
+                    incidents = incidents.filter(i => i.id !== msg.data.incident_id);
+                    renderIncidents();
+                }
+            };
+
+            ws.onclose = () => {
+                console.warn("WebSocket closed. Retrying...");
+                setTimeout(() => window.location.reload(), 3000);
+            };
+        };
+
+    </script>
+</body>
+</html>

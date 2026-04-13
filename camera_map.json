@@ -1,31 +1,150 @@
 {
     "cameras": {
-        "cam_01_gate": {
-            "name": "Main Gate",
+        "cam_9193": {
+            "name": "Camera 1",
             "is_restricted": false,
-            "adjacent_to": ["cam_02_corridor"]
+            "adjacent_to": [
+                "cam_3731",
+                "cam_1300",
+                "cam_9866",
+                "cam_5197"
+            ],
+            "map_coords": {
+                "x": 1075,
+                "y": 148
+            },
+            "fov": {
+                "angle": 60,
+                "direction": 130,
+                "distance": 100
+            }
         },
-        "cam_02_corridor": {
-            "name": "East Corridor",
+        "cam_3165": {
+            "name": "Camera 2",
             "is_restricted": false,
-            "adjacent_to": ["cam_01_gate", "cam_03_backdoor"]
+            "adjacent_to": [
+                "cam_3731",
+                "cam_5197"
+            ],
+            "map_coords": {
+                "x": 293,
+                "y": 631
+            },
+            "fov": {
+                "angle": 60,
+                "direction": 297,
+                "distance": 100
+            }
         },
-        "cam_03_backdoor": {
-            "name": "Back Door Exit",
-            "is_restricted": true,
-            "adjacent_to": ["cam_02_corridor"]
+        "cam_5197": {
+            "name": "Camera 3",
+            "is_restricted": false,
+            "adjacent_to": [
+                "cam_9193",
+                "cam_3165"
+            ],
+            "map_coords": {
+                "x": 1077,
+                "y": 636
+            },
+            "fov": {
+                "angle": 60,
+                "direction": 211,
+                "distance": 100
+            }
+        },
+        "cam_3731": {
+            "name": "Camera 4",
+            "is_restricted": false,
+            "adjacent_to": [
+                "cam_9193",
+                "cam_9866",
+                "cam_3165",
+                "cam_1300"
+            ],
+            "map_coords": {
+                "x": 295,
+                "y": 156
+            },
+            "fov": {
+                "angle": 60,
+                "direction": 38,
+                "distance": 100
+            }
+        },
+        "cam_9866": {
+            "name": "Camera 5",
+            "is_restricted": false,
+            "adjacent_to": [
+                "cam_3731",
+                "cam_1300",
+                "cam_9193"
+            ],
+            "map_coords": {
+                "x": 641,
+                "y": 140
+            },
+            "fov": {
+                "angle": 60,
+                "direction": 262,
+                "distance": 100
+            }
+        },
+        "cam_1300": {
+            "name": "Camera 6",
+            "is_restricted": false,
+            "adjacent_to": [
+                "cam_3731",
+                "cam_9193",
+                "cam_9866",
+                "cam_124"
+            ],
+            "map_coords": {
+                "x": 624,
+                "y": 285
+            },
+            "fov": {
+                "angle": 60,
+                "direction": 269,
+                "distance": 100
+            }
+        },
+        "cam_124": {
+            "name": "Camera 7",
+            "is_restricted": false,
+            "adjacent_to": [
+                "cam_1300"
+            ],
+            "map_coords": {
+                "x": 850,
+                "y": 527
+            },
+            "fov": {
+                "angle": 60,
+                "direction": 218,
+                "distance": 100
+            }
         }
     },
-    "transit_model": {
-        "cam_01_gate_to_cam_02_corridor": {
-            "expected_seconds": 20,
-            "tolerance_seconds": 15,
-            "_note": "Fallback only — system learns real values automatically"
+    "rooms": [
+        {
+            "id": "zone_1776098774495",
+            "name": "Restricted Zone",
+            "x": 278,
+            "y": 141,
+            "w": 804,
+            "h": 504,
+            "restricted": true
         },
-        "cam_02_corridor_to_cam_03_backdoor": {
-            "expected_seconds": 15,
-            "tolerance_seconds": 10,
-            "_note": "Fallback only — system learns real values automatically"
+        {
+            "id": "zone_1776098842968",
+            "name": "Restricted Zone",
+            "x": 424,
+            "y": 285,
+            "w": 441,
+            "h": 255,
+            "restricted": true
         }
-    }
+    ],
+    "transit_model": {}
 }

@@ -1,10 +1,8 @@
 """
-main.py — Smart CCTV System Entry Point (v2)
+main.py — Smart CCTV System Entry Point (v4)
 =============================================
-Changes from v1:
-  - Replaced print() with Python logging (console + rotating file).
-  - Learning status report on startup shows transit model confidence.
-  - Graceful shutdown on SIGINT / SIGTERM.
+Added MJPEG Streaming Bridge, OOM Queue Protections, 
+and Dynamic Spatial Camera Loading.
 """
 
 from __future__ import annotations
@@ -20,6 +18,7 @@ import threading
 import time
 
 import cv2
+import requests
 from dotenv import load_dotenv
 from ultralytics import YOLO
 
@@ -54,15 +53,30 @@ logger = logging.getLogger("main")
 os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
 load_dotenv()
 
-EVENT_BUS: queue.Queue[DetectionEvent] = queue.Queue()
+# Maxsize prevents Out-Of-Memory (OOM) crashes during heavy traffic
+EVENT_BUS: queue.Queue[DetectionEvent] = queue.Queue(maxsize=200)
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 RTSP_URL           = os.getenv("RTSP_URL", "").strip()
 FRAME_STRIDE       = int(os.getenv("FRAME_STRIDE", "6"))
 
-with open("camera_map.json", "r") as f:
-    CAMERA_MAP = json.load(f)
+def load_camera_map():
+    """Helper to load the map JSON dynamically."""
+    if not os.path.exists("camera_map.json"):
+        return {"cameras": {}, "rooms": [], "transit_model": {}}
+        
+    try:
+        with open("camera_map.json", "r") as f:
+            content = f.read().strip()
+            if not content:
+                return {"cameras": {}, "rooms": [], "transit_model": {}}
+            return json.loads(content)
+    except (json.JSONDecodeError, Exception) as e:
+        logger.error(f"Error loading camera_map.json: {e}")
+        return {"cameras": {}, "rooms": [], "transit_model": {}}
+
+CAMERA_MAP = load_camera_map()
 
 correlation_engine = CorrelationEngine(
     camera_map=CAMERA_MAP,
@@ -87,7 +101,7 @@ def engine_worker() -> None:
 
 def camera_worker(camera_id: str, stream_url) -> None:
     logger.info("Camera worker starting: %s", camera_id)
-    model = YOLO("yolo26n.pt")
+    model = YOLO("yolo26n.pt") # Ensure this model file exists
     extractor = AppearanceExtractor(mode="heuristic")
 
     try:
@@ -95,7 +109,7 @@ def camera_worker(camera_id: str, stream_url) -> None:
             source=stream_url,
             stream=True,
             vid_stride=FRAME_STRIDE,
-            classes=[0],
+            classes=[0], # 0 = Person
             verbose=False,
         )
         for result in results:
@@ -105,20 +119,38 @@ def camera_worker(camera_id: str, stream_url) -> None:
                 appearance_vector = extractor.get_vector(frame, coords)
                 if appearance_vector is None:
                     continue
-                EVENT_BUS.put(DetectionEvent(
-                    camera_id=camera_id,
-                    timestamp=time.time(),
-                    bbox=coords.tolist(),
-                    appearance_vector=appearance_vector,
-                ))
+                
+                # Push to event bus safely
+                try:
+                    EVENT_BUS.put_nowait(DetectionEvent(
+                        camera_id=camera_id,
+                        timestamp=time.time(),
+                        bbox=coords.tolist(),
+                        appearance_vector=appearance_vector,
+                    ))
+                except queue.Full:
+                    pass # Drop event to keep system alive if busy
+            
+            # --- MJPEG STREAMING BRIDGE ---
             annotated = result.plot()
-            cv2.imshow(f"Feed: {camera_id}", annotated)
-            if cv2.waitKey(1) & 0xFF == ord("q"):
-                break
+            
+            # Compress the annotated frame into JPEG format
+            ret, buffer = cv2.imencode('.jpg', annotated, [cv2.IMWRITE_JPEG_QUALITY, 60])
+            if ret:
+                try:
+                    # Push the frame directly to the local FastAPI server in memory
+                    requests.post(
+                        f"http://127.0.0.1:8000/api/internal/frame/{camera_id}",
+                        data=buffer.tobytes(),
+                        headers={'Content-Type': 'application/octet-stream'},
+                        timeout=0.1 # Fail fast so camera loop never lags
+                    )
+                except Exception:
+                    pass # Ignore if web server is offline
+
     except Exception as exc:
         logger.exception("Camera worker %s crashed: %s", camera_id, exc)
     finally:
-        cv2.destroyAllWindows()
         logger.info("Camera worker stopped: %s.", camera_id)
 
 
@@ -136,16 +168,44 @@ def _print_learning_status() -> None:
 
 
 def main() -> None:
-    logger.info("Smart CCTV System v2 starting.")
+    logger.info("Smart CCTV System v4 starting (Dynamic Mode).")
     _print_learning_status()
 
-    if not RTSP_URL:
-        logger.error("RTSP_URL not set in .env. Example: RTSP_URL=rtsp://192.168.1.5:8080/video")
-        sys.exit(1)
-
+    # Start the Correlation Engine thread
     threading.Thread(target=engine_worker, daemon=True, name="engine").start()
-    threading.Thread(target=camera_worker, args=("cam_01_gate", 0), daemon=True, name="cam_01").start()
-    threading.Thread(target=camera_worker, args=("cam_02_corridor", RTSP_URL), daemon=True, name="cam_02").start()
+    
+    # --- DYNAMIC CAMERA LOADING ---
+    cameras_to_load = CAMERA_MAP.get("cameras", {})
+    
+    if not cameras_to_load:
+        logger.warning("No cameras found in camera_map.json! Please draw them in the UI and restart.")
+    else:
+        logger.info(f"Found {len(cameras_to_load)} cameras in layout. Spinning up workers...")
+        
+        webcam_assigned = False
+        
+        for cam_id, cam_info in cameras_to_load.items():
+            stream_target = None
+            
+            # Logic to assign the single webcam to the first camera, and RTSP to the rest
+            if not webcam_assigned:
+                stream_target = 0
+                webcam_assigned = True
+                logger.info(f"Assigning Laptop Webcam (0) to {cam_id}")
+            elif RTSP_URL:
+                stream_target = RTSP_URL
+                logger.info(f"Assigning Phone RTSP to {cam_id}")
+            else:
+                logger.warning(f"Skipping {cam_id}: Webcam already in use and RTSP_URL is empty.")
+                continue
+
+            # Spin up a worker for the camera
+            threading.Thread(
+                target=camera_worker, 
+                args=(cam_id, stream_target), 
+                daemon=True, 
+                name=cam_id
+            ).start()
 
     logger.info("All workers started. Press Ctrl+C to stop.")
 
