@@ -1,49 +1,10 @@
 {
     "cameras": {
-        "cam_3328": {
-            "name": "Eric",
-            "stream_url": "http://10.176.172.5:8080/video",
-            "is_restricted": false,
-            "adjacent_to": [
-                "cam_9287",
-                "cam_8602"
-            ],
-            "map_coords": {
-                "x": 475,
-                "y": 178
-            },
-            "fov": {
-                "angle": 60,
-                "direction": 46,
-                "distance": 100
-            }
-        },
-        "cam_9287": {
-            "name": "Esther",
-            "stream_url": "http://10.176.172.8:8080/video",
-            "is_restricted": false,
-            "adjacent_to": [
-                "cam_3328",
-                "cam_8602"
-            ],
-            "map_coords": {
-                "x": 833,
-                "y": 164
-            },
-            "fov": {
-                "angle": 60,
-                "direction": 141,
-                "distance": 100
-            }
-        },
         "cam_8602": {
             "name": "Camera 4",
             "stream_url": "",
             "is_restricted": false,
-            "adjacent_to": [
-                "cam_3328",
-                "cam_9287"
-            ],
+            "adjacent_to": [],
             "map_coords": {
                 "x": 478,
                 "y": 405

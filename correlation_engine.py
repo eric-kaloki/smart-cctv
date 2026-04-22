@@ -6,8 +6,10 @@ Added non-blocking UI push thread.
 
 from __future__ import annotations
 
+import json
 import logging
 import math
+import os
 import threading
 import time
 from datetime import datetime
@@ -243,8 +245,9 @@ class CorrelationEngine:
         
         if score_result.is_alert and trail.status != "incident":
             trail.status = "incident"
-            self._dispatcher.send_incident(trail)
-            self._push_to_ui(trail, "new_incident", score_result)
+            if _is_in_alert_window():
+                self._dispatcher.send_incident(trail)
+                self._push_to_ui(trail, "new_incident", score_result)
             database.save_trail_and_incident(trail, score_result)
 
     def _start_cleanup_thread(self) -> None:
@@ -261,6 +264,34 @@ class CorrelationEngine:
             for trail in self._active_trails:
                 if trail.status == "active" and (now - trail.last_updated) > TRAIL_STALE_TIMEOUT_SECONDS:
                     trail.status = "closed"
+
+def _load_alert_schedule() -> dict | None:
+    """Load alert schedule from file. Returns None if not configured (always alert)."""
+    try:
+        if os.path.exists("alert_schedule.json"):
+            with open("alert_schedule.json", "r") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return None
+
+
+def _is_in_alert_window() -> bool:
+    """Returns True if the current time falls within the configured alert window."""
+    schedule = _load_alert_schedule()
+    if schedule is None:
+        return True  # No schedule set — maintain backward-compatible behaviour
+    if not schedule.get("enabled", True):
+        return False
+    now = datetime.now()
+    current_minutes = now.hour * 60 + now.minute
+    start_minutes = schedule.get("start_hour", 22) * 60 + schedule.get("start_minute", 0)
+    end_minutes = schedule.get("end_hour", 7) * 60 + schedule.get("end_minute", 0)
+    # Overnight window (e.g. 22:00 → 07:00 crosses midnight)
+    if start_minutes > end_minutes:
+        return current_minutes >= start_minutes or current_minutes < end_minutes
+    return start_minutes <= current_minutes < end_minutes
+
 
 def _euclidean_rgb(rgb1: list, rgb2: list) -> Optional[float]:
     if len(rgb1) != 3 or len(rgb2) != 3:
