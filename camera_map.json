@@ -1,149 +1,69 @@
 {
     "cameras": {
-        "cam_9193": {
-            "name": "Camera 1",
+        "cam_3328": {
+            "name": "Eric",
+            "stream_url": "http://10.176.172.5:8080/video",
             "is_restricted": false,
             "adjacent_to": [
-                "cam_3731",
-                "cam_1300",
-                "cam_9866",
-                "cam_5197"
+                "cam_9287",
+                "cam_8602"
             ],
             "map_coords": {
-                "x": 1075,
-                "y": 148
+                "x": 475,
+                "y": 178
             },
             "fov": {
                 "angle": 60,
-                "direction": 130,
+                "direction": 46,
                 "distance": 100
             }
         },
-        "cam_3165": {
-            "name": "Camera 2",
+        "cam_9287": {
+            "name": "Esther",
+            "stream_url": "http://10.176.172.8:8080/video",
             "is_restricted": false,
             "adjacent_to": [
-                "cam_3731",
-                "cam_5197"
+                "cam_3328",
+                "cam_8602"
             ],
             "map_coords": {
-                "x": 293,
-                "y": 631
+                "x": 833,
+                "y": 164
             },
             "fov": {
                 "angle": 60,
-                "direction": 297,
+                "direction": 141,
                 "distance": 100
             }
         },
-        "cam_5197": {
-            "name": "Camera 3",
-            "is_restricted": false,
-            "adjacent_to": [
-                "cam_9193",
-                "cam_3165"
-            ],
-            "map_coords": {
-                "x": 1077,
-                "y": 636
-            },
-            "fov": {
-                "angle": 60,
-                "direction": 211,
-                "distance": 100
-            }
-        },
-        "cam_3731": {
+        "cam_8602": {
             "name": "Camera 4",
+            "stream_url": "",
             "is_restricted": false,
             "adjacent_to": [
-                "cam_9193",
-                "cam_9866",
-                "cam_3165",
-                "cam_1300"
+                "cam_3328",
+                "cam_9287"
             ],
             "map_coords": {
-                "x": 295,
-                "y": 156
+                "x": 478,
+                "y": 405
             },
             "fov": {
                 "angle": 60,
-                "direction": 38,
-                "distance": 100
-            }
-        },
-        "cam_9866": {
-            "name": "Camera 5",
-            "is_restricted": false,
-            "adjacent_to": [
-                "cam_3731",
-                "cam_1300",
-                "cam_9193"
-            ],
-            "map_coords": {
-                "x": 641,
-                "y": 140
-            },
-            "fov": {
-                "angle": 60,
-                "direction": 262,
-                "distance": 100
-            }
-        },
-        "cam_1300": {
-            "name": "Camera 6",
-            "is_restricted": false,
-            "adjacent_to": [
-                "cam_3731",
-                "cam_9193",
-                "cam_9866",
-                "cam_124"
-            ],
-            "map_coords": {
-                "x": 624,
-                "y": 285
-            },
-            "fov": {
-                "angle": 60,
-                "direction": 269,
-                "distance": 100
-            }
-        },
-        "cam_124": {
-            "name": "Camera 7",
-            "is_restricted": false,
-            "adjacent_to": [
-                "cam_1300"
-            ],
-            "map_coords": {
-                "x": 850,
-                "y": 527
-            },
-            "fov": {
-                "angle": 60,
-                "direction": 218,
+                "direction": 318,
                 "distance": 100
             }
         }
     },
     "rooms": [
         {
-            "id": "zone_1776098774495",
-            "name": "Restricted Zone",
-            "x": 278,
-            "y": 141,
-            "w": 804,
-            "h": 504,
-            "restricted": true
-        },
-        {
-            "id": "zone_1776098842968",
-            "name": "Restricted Zone",
-            "x": 424,
-            "y": 285,
-            "w": 441,
-            "h": 255,
-            "restricted": true
+            "id": "zone_1776848592847",
+            "name": "New Zone",
+            "x": 465,
+            "y": 152,
+            "w": 383,
+            "h": 267,
+            "restricted": false
         }
     ],
     "transit_model": {}

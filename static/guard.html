@@ -25,17 +25,15 @@
         ::-webkit-scrollbar-track { background: #1e293b; }
         ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
 
-        /* Mode Styles */
         .tool-active { background-color: #3b82f6; color: white; border-color: #60a5fa; }
         canvas.mode-draw { cursor: crosshair; }
         canvas.mode-place { cursor: crosshair; }
         canvas.mode-select { cursor: default; }
-        canvas.mode-live { cursor: pointer; } /* Indicates cameras are clickable in live mode */
+        canvas.mode-live { cursor: pointer; }
     </style>
 </head>
 <body class="h-screen w-screen flex flex-col font-sans">
 
-    <!-- Header -->
     <header class="h-16 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-6 shrink-0">
         <div class="flex items-center gap-3">
             <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
@@ -56,13 +54,10 @@
         </div>
     </header>
 
-    <!-- Main Workspace -->
     <main class="flex-1 flex overflow-hidden">
         
-        <!-- Canvas Area (2.5D Map) -->
         <div class="flex-1 relative p-4" id="map-container">
             
-            <!-- Setup Toolbar -->
             <div id="setup-toolbar" class="hidden absolute top-6 left-1/2 -translate-x-1/2 z-20 bg-slate-800/90 backdrop-blur border border-slate-700 p-2 rounded-xl shadow-2xl flex items-center gap-2">
                 <button id="tool-zone" onclick="setTool('zone')" class="px-3 py-1.5 hover:bg-slate-700 rounded border border-transparent text-sm text-slate-300 flex items-center gap-2">
                     <i data-lucide="square" class="w-4 h-4"></i> Draw Zone
@@ -79,25 +74,22 @@
                 </button>
             </div>
 
-            <!-- Legend -->
             <div id="legend-panel" class="absolute top-6 left-6 z-10 bg-slate-800/80 backdrop-blur border border-slate-700 p-3 rounded-lg shadow-lg transition-opacity">
                 <h3 class="text-xs text-slate-400 font-semibold uppercase mb-2">Legend</h3>
                 <div class="flex flex-col gap-2 text-sm">
                     <div class="flex items-center gap-2"><div class="w-3 h-3 rounded-full bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,0.8)]"></div> Active Trail</div>
                     <div class="flex items-center gap-2"><div class="w-3 h-3 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse"></div> Incident Alert</div>
                     <div class="flex items-center gap-2"><div class="w-3 h-3 bg-red-900/30 border border-red-500/50 rounded-sm"></div> Restricted Zone</div>
+                    <div class="flex items-center gap-2"><div class="w-3 h-3 bg-slate-700/30 border border-slate-500/50 rounded-sm"></div> Public / Compound Zone</div>
                 </div>
             </div>
             
             <canvas id="floorPlan" class="w-full h-full rounded-xl border border-slate-800 bg-slate-900 shadow-2xl mode-live" tabindex="0"></canvas>
         </div>
 
-        <!-- Right Sidebar -->
         <aside id="sidebar" class="w-96 bg-slate-900 border-l border-slate-800 flex flex-col shrink-0 transition-opacity">
             
-            <!-- LIVE MODE CONTENT -->
             <div id="live-sidebar" class="flex-1 flex flex-col h-full">
-                <!-- Incidents Panel -->
                 <div class="flex-1 flex flex-col">
                     <div class="p-4 border-b border-slate-800 flex justify-between items-center">
                         <h2 class="text-sm font-bold uppercase text-slate-300 flex items-center gap-2">
@@ -114,19 +106,16 @@
                     </div>
                 </div>
 
-                <!-- LIVE Focus Camera Feed -->
                 <div class="h-72 border-t border-slate-800 bg-black p-2 flex flex-col">
                     <div class="text-xs text-slate-400 uppercase font-bold mb-2 tracking-wider flex justify-between">
                         <span>Live Feed</span>
                         <span class="text-blue-400 text-[10px]" id="active-cam-name">Click map to select camera</span>
                     </div>
                     <div id="camera-feeds" class="flex-1 rounded overflow-hidden relative border border-slate-700 bg-slate-900 flex items-center justify-center">
-                        <!-- Feed injected here -->
                     </div>
                 </div>
             </div>
 
-            <!-- EDIT MODE CONTENT (Properties Panel) -->
             <div id="edit-sidebar" class="hidden flex-1 flex flex-col p-4">
                 <h2 class="text-sm font-bold uppercase text-slate-300 mb-4 flex items-center gap-2">
                     <i data-lucide="sliders" class="w-4 h-4"></i> Properties
@@ -141,6 +130,20 @@
                     <div>
                         <label class="block text-xs text-slate-400 mb-1 uppercase tracking-wider font-semibold">Name</label>
                         <input type="text" id="prop-name" class="w-full bg-slate-800 border border-slate-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none rounded px-3 py-2 text-white text-sm transition" oninput="handlePropChange('name', this.value)">
+                    </div>
+
+                    <div id="prop-stream-container" class="hidden">
+                        <label class="block text-xs text-slate-400 mb-1 uppercase tracking-wider font-semibold">Stream URL (IP/HTTP)</label>
+                        <input type="text" id="prop-stream-url" placeholder="e.g. http://10.81.17.41:8080/video" class="w-full bg-slate-800 border border-slate-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none rounded px-3 py-2 text-white text-sm transition" oninput="handlePropChange('stream_url', this.value)">
+                        <p class="text-[10px] text-slate-500 mt-1">Leave blank to use default laptop webcam (0).</p>
+                    </div>
+
+                    <div class="flex items-center gap-3 p-3 bg-slate-800 rounded border border-slate-700">
+                        <input type="checkbox" id="prop-restricted" class="w-4 h-4 accent-red-500 cursor-pointer" onchange="handlePropChange('restricted', this.checked)">
+                        <div>
+                            <label for="prop-restricted" class="block text-sm text-slate-200 font-bold cursor-pointer">Security Alert Zone</label>
+                            <p class="text-[10px] text-slate-400 leading-tight mt-0.5">If checked, AI will flag anyone seen here as an active incident.</p>
+                        </div>
                     </div>
                     
                     <div id="prop-direction-container" class="hidden">
@@ -176,13 +179,11 @@
         let trails = {}; 
         let incidents = [];
         
-        // Setup Mode State
         let isEditMode = false;
         let currentTool = 'select'; 
         
-        // Interaction State
         let selectedItem = null; 
-        let activeLiveCamera = null; // The camera currently being viewed in the sidebar
+        let activeLiveCamera = null; 
         let drawingZone = null;
         let draggingCam = null;
         let draggingRoom = null;
@@ -197,20 +198,16 @@
         }
         window.addEventListener('resize', resizeCanvas);
 
-        // --- ANIMATION ENGINE ---
-        // We use requestAnimationFrame to make the radar pulses and trails move smoothly
         function renderLoop() {
             drawMap();
             requestAnimationFrame(renderLoop);
         }
 
-        // --- FETCH DYNAMIC DATA ---
         async function loadMapData() {
             try {
                 const response = await fetch('/api/cameras'); 
                 if (response.ok) {
                     const data = await response.json();
-                    
                     if (data.cameras && Object.keys(data.cameras).length > 0) {
                         mapData.cameras = [];
                         mapData.rooms = data.rooms || [];
@@ -219,26 +216,21 @@
                             mapData.cameras.push({
                                 id: id,
                                 name: cam.name,
+                                stream_url: cam.stream_url || "", // LOAD URL
                                 x: cam.map_coords?.x || 100,
                                 y: cam.map_coords?.y || 100,
+                                is_restricted: cam.is_restricted || false,
                                 adjacent_to: cam.adjacent_to || [],
                                 fov: cam.fov || { angle: 60, direction: 45, distance: 100 }
                             });
                         }
-                        
-                        // Default focus to the first camera
-                        if (mapData.cameras.length > 0) {
-                            activeLiveCamera = mapData.cameras[0].id;
-                        }
+                        if (mapData.cameras.length > 0) activeLiveCamera = mapData.cameras[0].id;
                     }
                 }
-            } catch (err) {
-                console.log("Offline mode: No backend detected.");
-            }
+            } catch (err) {}
             setupCameraFeeds(); 
         }
 
-        // --- EDIT MODE LOGIC ---
         function toggleEditMode() {
             isEditMode = !isEditMode;
             const toolbar = document.getElementById('setup-toolbar');
@@ -250,23 +242,18 @@
             if (isEditMode) {
                 toolbar.classList.remove('hidden');
                 legend.classList.add('opacity-10');
-                
                 liveSidebar.classList.add('hidden');
                 editSidebar.classList.remove('hidden');
-
                 btn.classList.add('bg-blue-600', 'text-white');
                 btn.classList.remove('bg-slate-800', 'text-slate-300');
                 setTool('select');
             } else {
                 toolbar.classList.add('hidden');
                 legend.classList.remove('opacity-10');
-                
                 liveSidebar.classList.remove('hidden');
                 editSidebar.classList.add('hidden');
-
                 btn.classList.remove('bg-blue-600', 'text-white');
                 btn.classList.add('bg-slate-800', 'text-slate-300');
-                
                 selectedItem = null; 
                 setTool('select');
             }
@@ -277,7 +264,6 @@
             document.getElementById('tool-zone').classList.remove('tool-active');
             document.getElementById('tool-cam').classList.remove('tool-active');
             
-            // Set cursor style
             if (!isEditMode) {
                 canvas.className = 'w-full h-full rounded-xl border border-slate-800 shadow-2xl bg-slate-900 outline-none mode-live';
             } else {
@@ -311,7 +297,8 @@
             mapData.cameras.forEach(c => {
                 payload.cameras[c.id] = {
                     name: c.name,
-                    is_restricted: false, 
+                    stream_url: c.stream_url || "", // SAVE URL
+                    is_restricted: c.is_restricted || false, 
                     adjacent_to: c.adjacent_to || [], 
                     map_coords: { x: Math.round(c.x), y: Math.round(c.y) },
                     fov: c.fov 
@@ -333,15 +320,16 @@
             toggleEditMode();
         }
 
-        // --- PROPERTIES PANEL ENGINE ---
         function updatePropertiesPanel() {
             const noSelMsg = document.getElementById('no-selection-msg');
             const form = document.getElementById('properties-form');
             const nameInput = document.getElementById('prop-name');
+            const restInput = document.getElementById('prop-restricted');
+            const streamContainer = document.getElementById('prop-stream-container');
+            const streamInput = document.getElementById('prop-stream-url');
             const dirContainer = document.getElementById('prop-direction-container');
             const dirInput = document.getElementById('prop-direction');
             const dirVal = document.getElementById('prop-dir-val');
-            
             const adjContainer = document.getElementById('prop-adjacent-container');
             const adjList = document.getElementById('prop-adjacent-list');
 
@@ -353,7 +341,17 @@
 
             noSelMsg.classList.add('hidden');
             form.classList.remove('hidden');
+            
             nameInput.value = selectedItem.ref.name;
+
+            if (selectedItem.type === 'room') {
+                restInput.checked = selectedItem.ref.restricted;
+                streamContainer.classList.add('hidden');
+            } else if (selectedItem.type === 'camera') {
+                restInput.checked = selectedItem.ref.is_restricted || false;
+                streamContainer.classList.remove('hidden');
+                streamInput.value = selectedItem.ref.stream_url || "";
+            }
 
             if (selectedItem.type === 'camera') {
                 dirContainer.classList.remove('hidden');
@@ -387,8 +385,14 @@
 
         function handlePropChange(prop, value) {
             if (!selectedItem) return;
+            
             if (prop === 'name') {
                 selectedItem.ref.name = value;
+            } else if (prop === 'stream_url' && selectedItem.type === 'camera') {
+                selectedItem.ref.stream_url = value;
+            } else if (prop === 'restricted') {
+                if (selectedItem.type === 'room') selectedItem.ref.restricted = value;
+                if (selectedItem.type === 'camera') selectedItem.ref.is_restricted = value;
             } else if (prop === 'direction' && selectedItem.type === 'camera') {
                 selectedItem.ref.fov.direction = parseInt(value);
                 document.getElementById('prop-dir-val').innerText = value;
@@ -397,7 +401,6 @@
 
         function toggleAdjacency(targetCamId, isAdding) {
             if (!selectedItem || selectedItem.type !== 'camera') return;
-            
             if (!selectedItem.ref.adjacent_to) selectedItem.ref.adjacent_to = [];
             const targetCam = mapData.cameras.find(c => c.id === targetCamId);
             if (targetCam && !targetCam.adjacent_to) targetCam.adjacent_to = [];
@@ -432,7 +435,6 @@
             if ((e.key === 'Delete' || e.key === 'Backspace') && selectedItem) deleteSelected();
         });
 
-        // --- MOUSE INTERACTIONS ---
         function getMousePos(evt) {
             const rect = canvas.getBoundingClientRect();
             return { x: evt.clientX - rect.left, y: evt.clientY - rect.top };
@@ -455,17 +457,15 @@
         canvas.addEventListener('mousedown', (e) => {
             const pos = getMousePos(e);
             
-            // IF IN LIVE MODE: Handle selecting active camera for the sidebar feed
             if (!isEditMode) {
                 const hit = getHitItem(pos);
                 if (hit && hit.type === 'camera') {
                     activeLiveCamera = hit.ref.id;
                     setupCameraFeeds();
                 }
-                return; // Stop here, no dragging in live mode
+                return; 
             }
 
-            // IF IN EDIT MODE:
             if (currentTool === 'zone') {
                 drawingZone = { x: pos.x, y: pos.y, w: 0, h: 0 };
             } 
@@ -473,8 +473,10 @@
                 const newCam = {
                     id: `cam_${Math.floor(Math.random()*10000)}`, 
                     name: `Camera ${mapData.cameras.length + 1}`, 
+                    stream_url: "", // INIT URL
                     x: pos.x, 
                     y: pos.y,
+                    is_restricted: false,
                     adjacent_to: [],
                     fov: { angle: 60, direction: 45, distance: 100 }
                 };
@@ -526,9 +528,9 @@
                 if (rw > 20 && rh > 20) {
                     const newRoom = {
                         id: `zone_${Date.now()}`,
-                        name: "Restricted Zone",
+                        name: "New Zone",
                         x: rx, y: ry, w: rw, h: rh,
-                        restricted: true
+                        restricted: false
                     };
                     mapData.rooms.push(newRoom);
                     selectedItem = { type: 'room', ref: newRoom };
@@ -541,21 +543,20 @@
             draggingRoom = null;
         });
 
-        // --- DRAWING LOGIC ---
         function drawMap() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             const time = Date.now();
 
-            // 1. Draw Zones
             mapData.rooms.forEach(room => {
                 const isSelected = selectedItem && selectedItem.ref === room;
-                ctx.fillStyle = room.restricted ? 'rgba(239, 68, 68, 0.15)' : 'rgba(148, 163, 184, 0.1)';
+                
+                ctx.fillStyle = room.restricted ? 'rgba(239, 68, 68, 0.15)' : 'rgba(148, 163, 184, 0.05)';
                 
                 if (isSelected && isEditMode) {
                     ctx.strokeStyle = '#3b82f6';
                     ctx.lineWidth = 3;
                 } else {
-                    ctx.strokeStyle = room.restricted ? 'rgba(239, 68, 68, 0.6)' : '#475569';
+                    ctx.strokeStyle = room.restricted ? 'rgba(239, 68, 68, 0.6)' : 'rgba(148, 163, 184, 0.3)';
                     ctx.lineWidth = isEditMode ? 2 : 1;
                 }
                 
@@ -568,15 +569,14 @@
             });
 
             if (drawingZone) {
-                ctx.fillStyle = 'rgba(239, 68, 68, 0.3)';
-                ctx.strokeStyle = '#ef4444';
+                ctx.fillStyle = 'rgba(148, 163, 184, 0.2)';
+                ctx.strokeStyle = '#94a3b8';
                 ctx.setLineDash([5, 5]);
                 ctx.fillRect(drawingZone.x, drawingZone.y, drawingZone.w, drawingZone.h);
                 ctx.strokeRect(drawingZone.x, drawingZone.y, drawingZone.w, drawingZone.h);
                 ctx.setLineDash([]);
             }
 
-            // 2. Draw Cameras & Connection Lines
             if (mapData.cameras) {
                 if (isEditMode && selectedItem && selectedItem.type === 'camera') {
                     const selCam = selectedItem.ref;
@@ -599,7 +599,9 @@
 
                 mapData.cameras.forEach(cam => {
                     const isSelected = selectedItem && selectedItem.ref === cam;
-                    const isActiveLive = !isEditMode && activeLiveCamera === cam.id; // The camera currently viewed
+                    const isActiveLive = !isEditMode && activeLiveCamera === cam.id;
+
+                    const camColor = cam.is_restricted ? '#ef4444' : '#94a3b8';
 
                     if(cam.fov) {
                         ctx.beginPath();
@@ -607,7 +609,12 @@
                         const startAngle = (cam.fov.direction - cam.fov.angle / 2) * Math.PI / 180;
                         const endAngle = (cam.fov.direction + cam.fov.angle / 2) * Math.PI / 180;
                         ctx.arc(cam.x, cam.y, cam.fov.distance, startAngle, endAngle);
-                        ctx.fillStyle = (isSelected && isEditMode) || isActiveLive ? 'rgba(59, 130, 246, 0.2)' : 'rgba(255, 255, 255, 0.05)';
+                        
+                        if ((isSelected && isEditMode) || isActiveLive) {
+                            ctx.fillStyle = 'rgba(59, 130, 246, 0.2)';
+                        } else {
+                            ctx.fillStyle = cam.is_restricted ? 'rgba(239, 68, 68, 0.05)' : 'rgba(255, 255, 255, 0.03)';
+                        }
                         ctx.fill();
                     }
                     
@@ -619,29 +626,26 @@
                         ctx.shadowColor = '#60a5fa';
                         ctx.shadowBlur = 10;
                     } else {
-                        ctx.fillStyle = isEditMode ? '#3b82f6' : '#94a3b8';
+                        ctx.fillStyle = camColor;
                         ctx.shadowBlur = 0;
                     }
                     
                     ctx.fill();
                     ctx.shadowBlur = 0;
                     
-                    // Name label above camera
                     ctx.strokeStyle = '#fff';
                     if (isEditMode) ctx.stroke();
-                    ctx.fillStyle = isSelected || isActiveLive ? '#60a5fa' : '#fff';
+                    ctx.fillStyle = isSelected || isActiveLive ? '#60a5fa' : (cam.is_restricted ? '#fca5a5' : '#fff');
                     ctx.font = isSelected || isActiveLive ? 'bold 12px sans-serif' : '10px sans-serif';
                     ctx.fillText(cam.name, cam.x + 10, cam.y + 4);
                 });
             }
 
-            // 3. Draw Live Trails and Radar Pulse Animation (Only if NOT in edit mode)
             if (!isEditMode) {
                 Object.values(trails).forEach(trail => {
                     const isIncident = incidents.some(i => i.trail_id === trail.id);
-                    const colorStr = isIncident ? '239, 68, 68' : '96, 165, 250'; // Red vs Blue
+                    const colorStr = isIncident ? '239, 68, 68' : '96, 165, 250';
                     
-                    // Draw historical path
                     if (trail.history && trail.history.length > 1) {
                         ctx.beginPath();
                         ctx.moveTo(trail.history[0].x, trail.history[0].y);
@@ -653,11 +657,9 @@
                         ctx.setLineDash([]);
                     }
 
-                    // --- ANIMATED RADAR PULSE ---
-                    // Creates an expanding ring that pulses every 1 second based on Date.now()
                     const pulseScale = (time % 1000) / 1000; 
-                    const pulseRadius = 6 + (pulseScale * 20); // expands from 6px to 26px
-                    const pulseAlpha = 1 - pulseScale; // fades out as it expands
+                    const pulseRadius = 6 + (pulseScale * 20); 
+                    const pulseAlpha = 1 - pulseScale; 
                     
                     ctx.beginPath();
                     ctx.arc(trail.x, trail.y, pulseRadius, 0, Math.PI * 2);
@@ -665,7 +667,6 @@
                     ctx.lineWidth = 2;
                     ctx.stroke();
 
-                    // Inner Dot
                     ctx.beginPath();
                     ctx.arc(trail.x, trail.y, 6, 0, Math.PI * 2);
                     ctx.fillStyle = `rgb(${colorStr})`;
@@ -674,7 +675,6 @@
                     ctx.fill();
                     ctx.shadowBlur = 0; 
                     
-                    // Alert / Tracking Label next to the dot
                     ctx.fillStyle = '#fff';
                     ctx.font = 'bold 10px sans-serif';
                     ctx.fillText(isIncident ? '🚨 SUSPECT' : '👁️ TRACKING', trail.x + 12, trail.y + 4);
@@ -682,7 +682,6 @@
             }
         }
 
-        // --- DYNAMIC CAMERA FEEDS ---
         function setupCameraFeeds() {
             const container = document.getElementById('camera-feeds');
             const label = document.getElementById('active-cam-name');
@@ -693,7 +692,6 @@
                 return;
             }
 
-            // Find the selected camera, or default to the first one
             let camToView = mapData.cameras.find(c => c.id === activeLiveCamera);
             if (!camToView) {
                 camToView = mapData.cameras[0];
@@ -702,14 +700,13 @@
             
             label.innerText = camToView.name;
 
-            // Render a SINGLE large feed to fit the sidebar perfectly
             const el = document.createElement('div');
             el.className = 'w-full h-full relative overflow-hidden bg-black flex items-center justify-center';
             
             el.innerHTML = `
                 <div class="absolute top-2 left-2 flex items-center gap-2 z-10 bg-black/60 px-2 py-1 rounded">
-                    <div class="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-                    <span class="text-[10px] text-white font-bold uppercase tracking-wider">LIVE</span>
+                    <div class="w-2 h-2 ${camToView.is_restricted ? 'bg-red-500' : 'bg-blue-500'} rounded-full animate-pulse"></div>
+                    <span class="text-[10px] text-white font-bold uppercase tracking-wider">LIVE ${camToView.is_restricted ? '(RESTRICTED)' : ''}</span>
                 </div>
                 <img src="/api/stream/${camToView.id}" alt="${camToView.id} feed" class="w-full h-full object-contain opacity-90" 
                      onerror="this.onerror=null; this.src=''; this.parentElement.innerHTML+='<div class=\\'absolute inset-0 flex items-center justify-center text-xs text-slate-500 bg-slate-900\\'>Awaiting Stream...</div>'; this.style.display='none';">
@@ -717,7 +714,6 @@
             container.appendChild(el);
         }
 
-        // --- UI LOGIC ---
         function renderIncidents() {
             const list = document.getElementById('incidents-list');
             const emptyMsg = document.getElementById('no-incidents-msg');
@@ -738,9 +734,7 @@
             incidents.forEach(inc => {
                 const el = document.createElement('div');
                 el.className = 'incident-card bg-slate-800 border border-red-500/50 rounded-lg p-3 relative cursor-pointer hover:bg-slate-700 transition';
-                // If they click the incident card, auto-switch the live feed to the camera where it happened!
                 el.onclick = () => {
-                    // Extract the camera ID from the trail if possible, or fall back to finding it by coords
                     const targetCam = mapData.cameras.find(c => Math.hypot(c.x - inc.x, c.y - inc.y) < 50);
                     if (targetCam) {
                         activeLiveCamera = targetCam.id;
@@ -767,15 +761,11 @@
             renderIncidents();
         }
 
-        // Initialize
         window.onload = () => {
             resizeCanvas();
             loadMapData(); 
-            
-            // Start the 30FPS rendering loop for smooth pulse animations
             requestAnimationFrame(renderLoop);
 
-            // Connect WebSocket
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const ws = new WebSocket(`${protocol}//${window.location.host}/ws/live`);
             
@@ -795,11 +785,9 @@
             };
 
             ws.onclose = () => {
-                console.warn("WebSocket closed. Retrying...");
                 setTimeout(() => window.location.reload(), 3000);
             };
         };
-
     </script>
 </body>
 </html>
