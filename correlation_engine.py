@@ -6,8 +6,10 @@ Added non-blocking UI push thread.
 
 from __future__ import annotations
 
+import json
 import logging
 import math
+import os
 import threading
 import time
 from datetime import datetime
@@ -35,10 +37,27 @@ AFTER_HOURS_END = 6     # 6am
 
 # ── Alert Dispatcher ──────────────────────────────────────────────────────────
 
+ALERT_COOLDOWN_SECONDS = 60  # minimum gap between alerts per camera
+
+
 class AlertDispatcher:
     def __init__(self, bot_token: str, chat_id: str) -> None:
         self._bot_token = bot_token.strip()
         self._chat_id = chat_id.strip()
+        self._last_alert_time: dict[str, float] = {}  # camera_id → epoch seconds
+        self._cooldown_lock = threading.Lock()
+
+    def _is_on_cooldown(self, camera_id: str) -> bool:
+        """Returns True and logs if this camera sent an alert less than ALERT_COOLDOWN_SECONDS ago."""
+        now = time.time()
+        with self._cooldown_lock:
+            last = self._last_alert_time.get(camera_id, 0)
+            if now - last < ALERT_COOLDOWN_SECONDS:
+                remaining = int(ALERT_COOLDOWN_SECONDS - (now - last))
+                logger.debug("Alert suppressed for %s (cooldown %ds remaining)", camera_id, remaining)
+                return True
+            self._last_alert_time[camera_id] = now
+            return False
 
     def send_incident(self, trail: Trail) -> None:
         path_str = trail.get_path_summary()
@@ -52,10 +71,51 @@ class AlertDispatcher:
             trail.trail_id, path_str, total_seconds, time_label,
         )
 
+        last_cam = trail.events[-1].camera_id
+        if self._is_on_cooldown(last_cam):
+            return
+
         if not self._bot_token or not self._chat_id:
             return
 
         self._push_telegram(trail.trail_id, path_str, total_seconds, time_label)
+
+    def send_after_hours_detection(self, trail: Trail, cam_name: str) -> None:
+        """Fires an immediate alert when a person is detected during the alert window."""
+        last_event = trail.events[-1]
+        time_label = datetime.fromtimestamp(last_event.timestamp).strftime("%H:%M:%S")
+
+        logger.warning(
+            "AFTER-HOURS DETECTION | trail=%s | camera=%s | time=%s",
+            trail.trail_id, cam_name, time_label,
+        )
+
+        if self._is_on_cooldown(last_event.camera_id):
+            return
+
+        if not self._bot_token or not self._chat_id:
+            return
+
+        message = (
+            f"🚨 *Smart CCTV — After-Hours Person Detected*\n\n"
+            f"*Trail ID:* `{trail.trail_id}`\n"
+            f"*Camera:* {cam_name}\n"
+            f"*Time:* {time_label}\n\n"
+            f"_Person detected during the scheduled alert window._"
+        )
+
+        def _send():
+            try:
+                url = f"https://api.telegram.org/bot{self._bot_token}/sendMessage"
+                requests.post(
+                    url,
+                    data={"chat_id": self._chat_id, "text": message, "parse_mode": "Markdown"},
+                    timeout=(5, 10),  # (connect timeout, read timeout)
+                )
+            except Exception as exc:
+                logger.error("Telegram after-hours push failed for trail %s: %s", trail.trail_id, exc)
+
+        threading.Thread(target=_send, daemon=True).start()
 
     def _push_telegram(
         self, trail_id: str, path_str: str, total_seconds: int, time_label: str
@@ -68,15 +128,19 @@ class AlertDispatcher:
             f"*Started:* {time_label}\n\n"
             f"_Subject traversed multiple secured zones within anomaly threshold._"
         )
-        try:
-            url = f"https://api.telegram.org/bot{self._bot_token}/sendMessage"
-            requests.post(
-                url,
-                data={"chat_id": self._chat_id, "text": message, "parse_mode": "Markdown"},
-                timeout=8,
-            )
-        except Exception as exc:
-            logger.error("Telegram push failed for trail %s: %s", trail_id, exc)
+
+        def _send():
+            try:
+                url = f"https://api.telegram.org/bot{self._bot_token}/sendMessage"
+                requests.post(
+                    url,
+                    data={"chat_id": self._chat_id, "text": message, "parse_mode": "Markdown"},
+                    timeout=(5, 10),  # (connect timeout, read timeout)
+                )
+            except Exception as exc:
+                logger.error("Telegram push failed for trail %s: %s", trail_id, exc)
+
+        threading.Thread(target=_send, daemon=True).start()
 
 
 # ── Correlation Engine ────────────────────────────────────────────────────────
@@ -199,6 +263,13 @@ class CorrelationEngine:
         self._push_to_ui(new_trail, "trail_update")
         database.save_trail_and_incident(new_trail)
 
+        if _is_in_alert_window():
+            new_trail.status = "incident"
+            cam_name = self._camera_map.get("cameras", {}).get(event.camera_id, {}).get("name", event.camera_id)
+            self._dispatcher.send_after_hours_detection(new_trail, cam_name)
+            self._push_to_ui(new_trail, "new_incident")
+            database.save_trail_and_incident(new_trail)
+
     def _extend_trail(self, trail: Trail, new_event: DetectionEvent) -> None:
         previous_camera = trail.events[-1].camera_id
         trail.add_event(new_event)
@@ -243,8 +314,9 @@ class CorrelationEngine:
         
         if score_result.is_alert and trail.status != "incident":
             trail.status = "incident"
-            self._dispatcher.send_incident(trail)
-            self._push_to_ui(trail, "new_incident", score_result)
+            if _is_in_alert_window():
+                self._dispatcher.send_incident(trail)
+                self._push_to_ui(trail, "new_incident", score_result)
             database.save_trail_and_incident(trail, score_result)
 
     def _start_cleanup_thread(self) -> None:
@@ -261,6 +333,34 @@ class CorrelationEngine:
             for trail in self._active_trails:
                 if trail.status == "active" and (now - trail.last_updated) > TRAIL_STALE_TIMEOUT_SECONDS:
                     trail.status = "closed"
+
+def _load_alert_schedule() -> dict | None:
+    """Load alert schedule from file. Returns None if not configured (always alert)."""
+    try:
+        if os.path.exists("alert_schedule.json"):
+            with open("alert_schedule.json", "r") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return None
+
+
+def _is_in_alert_window() -> bool:
+    """Returns True if the current time falls within the configured alert window."""
+    schedule = _load_alert_schedule()
+    if schedule is None:
+        return True  # No schedule set — maintain backward-compatible behaviour
+    if not schedule.get("enabled", True):
+        return False
+    now = datetime.now()
+    current_minutes = now.hour * 60 + now.minute
+    start_minutes = schedule.get("start_hour", 22) * 60 + schedule.get("start_minute", 0)
+    end_minutes = schedule.get("end_hour", 7) * 60 + schedule.get("end_minute", 0)
+    # Overnight window (e.g. 22:00 → 07:00 crosses midnight)
+    if start_minutes > end_minutes:
+        return current_minutes >= start_minutes or current_minutes < end_minutes
+    return start_minutes <= current_minutes < end_minutes
+
 
 def _euclidean_rgb(rgb1: list, rgb2: list) -> Optional[float]:
     if len(rgb1) != 3 or len(rgb2) != 3:

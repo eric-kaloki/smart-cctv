@@ -174,7 +174,7 @@ def main() -> None:
     # Start the Correlation Engine thread
     threading.Thread(target=engine_worker, daemon=True, name="engine").start()
     
-# --- DYNAMIC CAMERA LOADING ---
+    # --- DYNAMIC CAMERA LOADING ---
     cameras_to_load = CAMERA_MAP.get("cameras", {})
     
     if not cameras_to_load:
@@ -182,22 +182,22 @@ def main() -> None:
     else:
         logger.info(f"Found {len(cameras_to_load)} cameras in layout. Spinning up workers...")
         
+        webcam_assigned = False
+        
         for cam_id, cam_info in cameras_to_load.items():
-            # Grab the stream_url from the JSON (the UI you just updated)
-            json_url = cam_info.get("stream_url", "").strip()
+            stream_target = None
             
-            # If the user left it blank in the UI, fall back to laptop webcam (0)
-            if not json_url:
+            # Logic to assign the single webcam to the first camera, and RTSP to the rest
+            if not webcam_assigned:
                 stream_target = 0
-                logger.info(f"Camera {cam_id} has empty URL. Defaulting to Laptop Webcam (0).")
-            # Convert numeric strings (like "0" or "1") to actual integers for OpenCV
-            elif json_url.isdigit():
-                stream_target = int(json_url)
-                logger.info(f"Assigning Hardware Camera {stream_target} to {cam_id}")
-            # Otherwise, use the HTTP/RTSP link provided
+                webcam_assigned = True
+                logger.info(f"Assigning Laptop Webcam (0) to {cam_id}")
+            elif RTSP_URL:
+                stream_target = RTSP_URL
+                logger.info(f"Assigning Phone RTSP to {cam_id}")
             else:
-                stream_target = json_url
-                logger.info(f"Assigning Stream {stream_target} to {cam_id}")
+                logger.warning(f"Skipping {cam_id}: Webcam already in use and RTSP_URL is empty.")
+                continue
 
             # Spin up a worker for the camera
             threading.Thread(

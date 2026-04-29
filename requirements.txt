@@ -9,6 +9,10 @@ numpy>=1.24.0
 ultralytics>=8.0.0          # YOLOv8/YOLOE-26 — pip install ultralytics
 # yolo26-nano                # Lightweight alternative if you have it
 
+# Web server
+fastapi>=0.100.0
+uvicorn>=0.23.0
+
 # Behavioral memory (local vector DB — no cloud)
 chromadb>=0.4.0
 
@@ -20,3 +24,6 @@ requests>=2.31.0
 
 # Optional: auto-load .env files
 python-dotenv>=1.0.0
+
+# Testing
+pytest>=7.0.0

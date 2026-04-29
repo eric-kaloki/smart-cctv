@@ -114,6 +114,34 @@
                     <div id="camera-feeds" class="flex-1 rounded overflow-hidden relative border border-slate-700 bg-slate-900 flex items-center justify-center">
                     </div>
                 </div>
+
+                <!-- Alert Schedule Panel -->
+                <div class="border-t border-slate-800 p-4 bg-slate-950/60 shrink-0">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-xs font-bold uppercase text-slate-300 flex items-center gap-2">
+                            <i data-lucide="clock" class="w-4 h-4"></i> Alert Schedule
+                        </h3>
+                        <span id="alert-status-badge" class="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase bg-slate-700 text-slate-400">Loading...</span>
+                    </div>
+                    <p class="text-[10px] text-slate-500 mb-3 leading-relaxed">Alerts only fire within this window. Useful for after-hours monitoring.</p>
+                    <div class="grid grid-cols-2 gap-2 mb-3">
+                        <div>
+                            <label class="block text-[10px] text-slate-400 mb-1 uppercase tracking-wider">Start (on)</label>
+                            <input type="time" id="alert-start-time" class="w-full bg-slate-800 border border-slate-700 focus:border-blue-500 outline-none rounded px-2 py-1.5 text-white text-xs" oninput="updateAlertStatusBadge()">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] text-slate-400 mb-1 uppercase tracking-wider">End (off)</label>
+                            <input type="time" id="alert-end-time" class="w-full bg-slate-800 border border-slate-700 focus:border-blue-500 outline-none rounded px-2 py-1.5 text-white text-xs" oninput="updateAlertStatusBadge()">
+                        </div>
+                    </div>
+                    <label class="flex items-center gap-2 mb-3 cursor-pointer">
+                        <input type="checkbox" id="alert-enabled" class="w-4 h-4 accent-blue-500" onchange="updateAlertStatusBadge()">
+                        <span class="text-xs text-slate-300">Enable scheduled alerts</span>
+                    </label>
+                    <button onclick="saveAlertSchedule()" class="w-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold py-1.5 rounded transition flex items-center justify-center gap-2">
+                        <i data-lucide="save" class="w-3 h-3"></i> Save Schedule
+                    </button>
+                </div>
             </div>
 
             <div id="edit-sidebar" class="hidden flex-1 flex flex-col p-4">
@@ -761,10 +789,79 @@
             renderIncidents();
         }
 
+        // ── Alert Schedule ─────────────────────────────────────────────────────
+
+        async function loadAlertSchedule() {
+            try {
+                const res = await fetch('/api/alert-schedule');
+                if (res.ok) {
+                    const data = await res.json();
+                    document.getElementById('alert-enabled').checked = data.enabled !== false;
+                    const sh = String(data.start_hour ?? 22).padStart(2, '0');
+                    const sm = String(data.start_minute ?? 0).padStart(2, '0');
+                    const eh = String(data.end_hour ?? 7).padStart(2, '0');
+                    const em = String(data.end_minute ?? 0).padStart(2, '0');
+                    document.getElementById('alert-start-time').value = `${sh}:${sm}`;
+                    document.getElementById('alert-end-time').value   = `${eh}:${em}`;
+                }
+            } catch(e) {}
+            lucide.createIcons();
+            updateAlertStatusBadge();
+        }
+
+        async function saveAlertSchedule() {
+            const startVal = document.getElementById('alert-start-time').value || '22:00';
+            const endVal   = document.getElementById('alert-end-time').value   || '07:00';
+            const enabled  = document.getElementById('alert-enabled').checked;
+            const [startH, startM] = startVal.split(':').map(Number);
+            const [endH,   endM]   = endVal.split(':').map(Number);
+            try {
+                const res = await fetch('/api/alert-schedule', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled, start_hour: startH, start_minute: startM, end_hour: endH, end_minute: endM })
+                });
+                if (res.ok) {
+                    updateAlertStatusBadge();
+                    const btn = document.querySelector('button[onclick="saveAlertSchedule()"]');
+                    if (btn) { btn.innerText = '\u2713 Saved!'; setTimeout(() => { btn.innerHTML = '<i data-lucide="save" class="w-3 h-3 inline mr-1"></i> Save Schedule'; lucide.createIcons(); }, 1500); }
+                }
+            } catch(e) {}
+        }
+
+        function updateAlertStatusBadge() {
+            const badge   = document.getElementById('alert-status-badge');
+            const enabled = document.getElementById('alert-enabled')?.checked;
+            if (!badge) return;
+            if (!enabled) {
+                badge.innerText = 'DISABLED';
+                badge.className = 'text-[10px] px-2 py-0.5 rounded-full font-bold uppercase bg-slate-700 text-slate-400';
+                return;
+            }
+            const startVal = document.getElementById('alert-start-time')?.value || '22:00';
+            const endVal   = document.getElementById('alert-end-time')?.value   || '07:00';
+            const now = new Date();
+            const cur = now.getHours() * 60 + now.getMinutes();
+            const [sh, sm] = startVal.split(':').map(Number);
+            const [eh, em] = endVal.split(':').map(Number);
+            const start = sh * 60 + sm;
+            const end   = eh * 60 + em;
+            const active = start > end ? (cur >= start || cur < end) : (cur >= start && cur < end);
+            if (active) {
+                badge.innerText = 'ALERTS ACTIVE';
+                badge.className = 'text-[10px] px-2 py-0.5 rounded-full font-bold uppercase bg-red-500/20 text-red-400 animate-pulse';
+            } else {
+                badge.innerText = 'ALERTS PAUSED';
+                badge.className = 'text-[10px] px-2 py-0.5 rounded-full font-bold uppercase bg-slate-700 text-slate-400';
+            }
+        }
+
         window.onload = () => {
             resizeCanvas();
             loadMapData(); 
             requestAnimationFrame(renderLoop);
+            loadAlertSchedule();
+            setInterval(updateAlertStatusBadge, 60000);
 
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const ws = new WebSocket(`${protocol}//${window.location.host}/ws/live`);

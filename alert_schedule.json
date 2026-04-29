@@ -1,0 +1,7 @@
+{
+    "enabled": true,
+    "start_hour": 9,
+    "start_minute": 30,
+    "end_hour": 15,
+    "end_minute": 0
+}

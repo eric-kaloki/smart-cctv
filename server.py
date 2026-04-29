@@ -46,6 +46,13 @@ manager = ConnectionManager()
 class AcknowledgeRequest(BaseModel):
     incident_id: int
 
+class AlertSchedule(BaseModel):
+    enabled: bool = True
+    start_hour: int = 22
+    start_minute: int = 0
+    end_hour: int = 7
+    end_minute: int = 0
+
 @app.get("/api/incidents/active")
 async def get_active_incidents():
     try:
@@ -106,6 +113,26 @@ async def save_camera_layout(request: Request):
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+@app.get("/api/alert-schedule")
+async def get_alert_schedule():
+    defaults = {"enabled": True, "start_hour": 22, "start_minute": 0, "end_hour": 7, "end_minute": 0}
+    try:
+        if os.path.exists("alert_schedule.json"):
+            with open("alert_schedule.json", "r") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return defaults
+
+@app.post("/api/alert-schedule")
+async def save_alert_schedule(schedule: AlertSchedule):
+    try:
+        with open("alert_schedule.json", "w") as f:
+            json.dump(schedule.dict(), f, indent=4)
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/internal/push")
 async def push_to_ui(payload: dict):
     await manager.broadcast_live_event(payload["type"], payload["data"])
