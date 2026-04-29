@@ -4,7 +4,9 @@
             "name": "Camera 4",
             "stream_url": "",
             "is_restricted": false,
-            "adjacent_to": [],
+            "adjacent_to": [
+                "cam_111"
+            ],
             "map_coords": {
                 "x": 478,
                 "y": 405
@@ -12,6 +14,23 @@
             "fov": {
                 "angle": 60,
                 "direction": 318,
+                "distance": 100
+            }
+        },
+        "cam_111": {
+            "name": "Camera 2",
+            "stream_url": "stream url",
+            "is_restricted": true,
+            "adjacent_to": [
+                "cam_8602"
+            ],
+            "map_coords": {
+                "x": 473,
+                "y": 166
+            },
+            "fov": {
+                "angle": 60,
+                "direction": 54,
                 "distance": 100
             }
         }
